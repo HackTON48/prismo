@@ -1,0 +1,86 @@
+/*
+
+    Copyright 2020 PRISMO ZOO.
+    SPDX-License-Identifier: Apache-2.0
+
+*/
+
+pragma solidity 0.6.9;
+pragma experimental ABIEncoderV2;
+
+import {Types} from "./lib/Types.sol";
+import {IERC20} from "./intf/IERC20.sol";
+import {Storage} from "./impl/Storage.sol";
+import {Trader} from "./impl/Trader.sol";
+import {LiquidityProvider} from "./impl/LiquidityProvider.sol";
+import {Admin} from "./impl/Admin.sol";
+import {PRISMOLpToken} from "./impl/PRISMOLpToken.sol";
+import {IERC4626} from "./intf/IERC4626.sol";
+
+/**
+ * @title PRISMO
+ * @author PRISMO Breeder
+ *
+ * @notice Entrance for users
+ */
+contract PRISMO is Admin, Trader, LiquidityProvider {
+    function init(
+        address owner,
+        address supervisor,
+        address maintainer,
+        address baseToken,
+        address quoteToken,
+        address oracle,
+        uint256 lpFeeRate,
+        uint256 mtFeeRate,
+        uint256 k,
+        uint256 gasPriceLimit
+    ) external {
+        require(!_INITIALIZED_, "PRISMO_INITIALIZED");
+        _INITIALIZED_ = true;
+
+        // constructor
+        _OWNER_ = owner;
+        emit OwnershipTransferred(address(0), _OWNER_);
+
+        _SUPERVISOR_ = supervisor;
+        _MAINTAINER_ = maintainer;
+        _BASE_TOKEN_ = baseToken;
+        _QUOTE_TOKEN_ = quoteToken;
+        _ORACLE_ = oracle;
+
+        try IERC4626(_BASE_TOKEN_).asset{gas:10000}() returns (address underlying) {
+            _BASE_TOKEN_IS_VAULT =  underlying != address(0);
+        } catch {
+            _BASE_TOKEN_IS_VAULT =  false;
+        }
+        try IERC4626(_QUOTE_TOKEN_).asset{gas: 10000}() returns (address underlying) {
+            _QUOTE_TOKEN_IS_VAULT =  underlying != address(0);
+        } catch {
+            _QUOTE_TOKEN_IS_VAULT =  false;
+        }
+
+
+        _DEPOSIT_BASE_ALLOWED_ = false;
+        _DEPOSIT_QUOTE_ALLOWED_ = false;
+        _TRADE_ALLOWED_ = false;
+        _GAS_PRICE_LIMIT_ = gasPriceLimit;
+
+        // Advanced controls are disabled by default
+        _BUYING_ALLOWED_ = true;
+        _SELLING_ALLOWED_ = true;
+        uint256 MAX_INT = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+        _BASE_BALANCE_LIMIT_ = MAX_INT;
+        _QUOTE_BALANCE_LIMIT_ = MAX_INT;
+
+        _LP_FEE_RATE_ = lpFeeRate;
+        _MT_FEE_RATE_ = mtFeeRate;
+        _K_ = k;
+        _R_STATUS_ = Types.RStatus.ONE;
+
+        _BASE_CAPITAL_TOKEN_ = address(new PRISMOLpToken(_BASE_TOKEN_));
+        _QUOTE_CAPITAL_TOKEN_ = address(new PRISMOLpToken(_QUOTE_TOKEN_));
+
+        _checkPRISMOParameters();
+    }
+}
